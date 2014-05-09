@@ -3,42 +3,53 @@ require './led.rb'
 require 'RMagick'
 
 
+DEV="/dev/ttyS0"
+BAUD=9600
+
+trap("INT"){exit 0}
+trap("TERM"){exit 0}
+
+
+
 def pango_create msg
   `pango-view --text #{msg} --output text.png --background=black --foreground=white --font="/usr/share/fonts/truetype/unifont/unifont.ttf 16" --pixels --margin=0 `
 end
 
-img = (Magick::Image.read "./text.png").first
-width = img.columns
-height = img.rows
+def read_img
+  img = (Magick::Image.read "./text.png").first
+  width = img.columns
+  height = img.rows
 
-blocks = (width / 8.0).ceil
+  blocks = (width / 8.0).ceil
 
-puts "blocks = #{blocks}, width= #{width}, height = #{height}" 
+  puts "blocks = #{blocks}, width= #{width}, height = #{height}" 
 
-cnt = 0 
-data=""
+  cnt = 0 
+  data=""
 
-#force 1 screen
-blocks= 16 
+  #force 1 screen
+  blocks= 16 
 
 
-blocks.times do |b|
-  16.times do |y|
-    byte_color = 0
-    8.times do |x|
-      if img.pixel_color(x+ b*8 ,y).green> 44440
-        g=1
-      else
-        g=0
+  blocks.times do |b|
+    16.times do |y|
+      byte_color = 0
+      8.times do |x|
+        if img.pixel_color(x+ b*8 ,y).green> 44440
+          g=1
+        else
+          g=0
+        end
+        byte_color += 2 ** x * g
+  #      puts "#{b} #{x} #{y} #{g}"
       end
-      byte_color += 2 ** x * g
-#      puts "#{b} #{x} #{y} #{g}"
+      data = data + byte_color.to_padded_hex(2)
     end
-    data = data + byte_color.to_padded_hex(2)
-  end
 
+  end
+  puts data
+  return data
 end
-puts data
 
 
 def recreate_dot_map data
@@ -64,14 +75,6 @@ def recreate_dot_map data
   end
       
 end
-
-DEV="/dev/ttyS0"
-BAUD=9600
-
-trap("INT"){exit 0}
-trap("TERM"){exit 0}
-
-
 
 class RS485
   def initialize screen_num
@@ -127,6 +130,29 @@ class RS485
     @sp.close
   end
 
+  def self.byte_escape str
+    return str if str.length !=2
+    strd = str.downcase
+    return "a602" if strd == "5a"
+    return "5b02" if strd == "a5"
+    return "a601" if strd == "a6"
+    return "5b01" if strd == "5b"
+    
+    return str
+  
+  end
+
+  def self.escape str
+    out = ""
+    if str.length.odd? #invalide bytes
+      return nil
+    end
+    
+    (str.length / 2 ).times do |i|
+      out+=byte_escape(str[i*2, 2])
+    end
+    out
+  end
 
 end
 
@@ -134,10 +160,11 @@ end
 
 puts "sending data to led screen(s)."
 pango_create ARGV[0]
+data = read_img
 recreate_dot_map data
 
 #rs485=RS485.new(1)
-RS485.rs485_send(("A5 00 00 15 10 01 00 02" + data + data + "00 00 5A ").gsub(/\s+/, ""))
+RS485.rs485_send(("A5 00 00 15 10 01 00 02" + RS485.escape(data) + RS485.escape(data) + "00 00 5A ").gsub(/\s+/, ""))
 
 =begin
 RS485.rs485_send("A5 00 00 15 01 01 00 02 
