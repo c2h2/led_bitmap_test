@@ -12,7 +12,9 @@ trap("TERM"){exit 0}
 
 
 def pango_create msg
-  `pango-view --text #{msg} --output text.png --background=black --foreground=white --font="/usr/share/fonts/truetype/unifont/unifont.ttf 16" --pixels --margin=0 `
+  
+#`pango-view --text #{msg} --output text.png --background=black --foreground=white --font="/usr/share/fonts/truetype/unifont/unifont.ttf 16" --pixels --margin=0 --no-display`
+  `pango-view --text '#{msg}' --output text.png --background=black --foreground=white --font="trado 16" --pixels --margin=0 --no-display`
 end
 
 def read_img
@@ -35,12 +37,12 @@ def read_img
     16.times do |y|
       byte_color = 0
       8.times do |x|
-        if img.pixel_color(x+ b*8 ,y).green> 44440
+        if img.pixel_color(x+ b*8+ 1 ,y+2).green> 44440
           g=1
         else
           g=0
         end
-        byte_color += 2 ** x * g
+        byte_color += 2 ** (8-x-1) * g
   #      puts "#{b} #{x} #{y} #{g}"
       end
       data = data + byte_color.to_padded_hex(2)
@@ -64,7 +66,7 @@ def recreate_dot_map data
       idx = blk* 32 + j * 2
       d=data[idx, 2].hex
       8.times do |k|
-        screen[j][blk*8+k]= (d & (1 << k) >0 )? "*":" "
+        screen[j][blk*8+k]= (d & (1 << (8-k-1)) >0 )? "*":"_"
       end
     end
   end
@@ -159,12 +161,11 @@ end
 
 
 puts "sending data to led screen(s)."
-pango_create ARGV[0]
+pango_create(ARGV.join " ")
 data = read_img
 recreate_dot_map data
 
-#rs485=RS485.new(1)
-RS485.rs485_send(("A5 00 00 15 10 01 00 02" + RS485.escape(data) + RS485.escape(data) + "00 00 5A ").gsub(/\s+/, ""))
+RS485.rs485_send(("A5 00 00 15 10 01 00 01" +  RS485.escape(data) + "00 00 5A ").gsub(/\s+/, ""))
 
 =begin
 RS485.rs485_send("A5 00 00 15 01 01 00 02 
